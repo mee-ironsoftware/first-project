@@ -1,0 +1,159 @@
+trigger: none
+pr: none
+schedules:
+- cron: '1 0 * * 6' # Every Saturday 00.01 AM
+  displayName: 'Weekly midnight build'
+  branches:
+    include:
+    - develop
+
+## All Repositories
+resources:
+  repositories:
+  - repository: SecondProject
+    type: github
+    endpoint: DevOpsTraining
+    name: mee-ironsoftware/second-project
+  - repository: FinalProject
+    type: github
+    endpoint: DevOpsTraining
+    name: mee-ironsoftware/final-project
+
+variables:
+  - name: Year
+    value: $[format('{0:yyyy}', pipeline.startTime)]
+  - name: Month
+    value: $[format('{0:M}', pipeline.startTime)]
+  - name: Patch
+    value: $[counter(format('{0}.{1}', variables['Year'], variables['Month']), 1)]
+  - name: weeklyBranchName
+    value: 'weekly/$(Year).$(Month).$(Patch)'
+  - name: PipelineStartDate
+    value: $[format('{0:dd}/{0:MM}/{0:yyyy} {0:HH}:{0:mm}:{0:ss}', pipeline.startTime)]
+  - name: NuGetVersion
+    value: '$(Year).$(Month).0-preview.$(Rev:r)'
+
+pool: 
+  vmImage: 'ubuntu-latest'
+
+stages:
+## Create branch and pr
+  - stage: CreateFirstBranchAndPR
+    displayName: '[FIRST] CHECKOUT AND CREATE WEEKLY BRANCH PR'
+    dependsOn: []
+    jobs: 
+    - job: CreateFirstBranchAndPRJob
+      steps:
+      - checkout: self
+        lfs: true
+        persistCredentials: true
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Branch name: $(weeklyBranchName)"
+            git config --global user.email "devops@ironsoftware.com"
+            git config --global user.name "DevOps"
+            git checkout -b $(weeklyBranchName)
+            git push -u origin $(weeklyBranchName)
+            
+            # Fetch master branch
+            git fetch origin master
+            
+            if [[ $(git diff --name-only origin/master..$(weeklyBranchName)) ]]; then
+              gh pr create \
+              --title "[Automation] Weekly Build $(PipelineStartDate)" \
+              --body "This PR includes the weekly build base on \`$(Build.SourceBranchName)\` branch on $(Build.SourceVersion) commit.<br>\
+              Please review the IronPdf SmokeTests and merge this PR when ready." \
+              --reviewer mee-ironsoftware \
+              --base master
+            else
+              echo "No changes detected. Skipping pull request creation."
+            fi
+        env:
+          GH_TOKEN: $(GitHub_PAT)
+        displayName: 'CREATE BRANCH & PULL REQUEST'
+  - stage: CreateSecondBranchAndPR
+    displayName: '[SECOND] CHECKOUT AND CREATE WEEKLY BRANCH PR'
+    dependsOn: []
+    jobs: 
+    - job: CreateSecondBranchAndPRJob
+      steps:
+      - checkout: SecondProject
+        lfs: true
+        persistCredentials: true
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Branch name: $(weeklyBranchName)"
+            git config --global user.email "devops@ironsoftware.com"
+            git config --global user.name "DevOps"
+            git checkout -b $(weeklyBranchName)
+            git push -u origin $(weeklyBranchName)
+            
+            # Fetch master branch
+            git fetch origin master
+            
+            if [[ $(git diff --name-only origin/master..$(weeklyBranchName)) ]]; then
+              gh pr create \
+              --title "[Automation] Weekly Build $(PipelineStartDate)" \
+              --body "This PR includes the weekly build base on \`$(Build.SourceBranchName)\` branch on $(Build.SourceVersion) commit.<br>\
+              Please review the IronPdf SmokeTests and merge this PR when ready." \
+              --reviewer mee-ironsoftware \
+              --base master
+            else
+              echo "No changes detected. Skipping pull request creation."
+            fi
+        env:
+          GH_TOKEN: $(GitHub_PAT)
+        displayName: 'CREATE BRANCH & PULL REQUEST'
+  - stage: CreateFinalBranchAndPR
+    displayName: '[FIRST] CHECKOUT AND CREATE WEEKLY BRANCH PR'
+    dependsOn: []
+    jobs: 
+    - job: CreateFinalBranchAndPRJob
+      steps:
+      - checkout: FinalProject
+        lfs: true
+        persistCredentials: true
+      - task: Bash@3
+        inputs:
+          targetType: 'inline'
+          script: |
+            echo "Branch name: $(weeklyBranchName)"
+            git config --global user.email "devops@ironsoftware.com"
+            git config --global user.name "DevOps"
+            git checkout -b $(weeklyBranchName)
+            git push -u origin $(weeklyBranchName)
+            
+            # Fetch master branch
+            git fetch origin master
+            
+            if [[ $(git diff --name-only origin/master..$(weeklyBranchName)) ]]; then
+              gh pr create \
+              --title "[Automation] Weekly Build $(PipelineStartDate)" \
+              --body "This PR includes the weekly build base on \`$(Build.SourceBranchName)\` branch on $(Build.SourceVersion) commit.<br>\
+              Please review the IronPdf SmokeTests and merge this PR when ready." \
+              --reviewer mee-ironsoftware \
+              --base master
+            else
+              echo "No changes detected. Skipping pull request creation."
+            fi
+        env:
+          GH_TOKEN: $(GitHub_PAT)
+        displayName: 'CREATE BRANCH & PULL REQUEST'
+
+## Stage to trigger another pipeline
+  - stage: CreateReleaseVersion
+    displayName: 'CREATE WEEKLY RELEASE VERSION'
+    condition: eq('${{ parameters.skipTriggerPipeline }}', false)
+    dependsOn:
+    - CreateFirstBranchAndPR
+    - CreateSecondBranchAndPR
+    - CreateFinalBranchAndPR
+    jobs:
+    - job: CreateReleaseVersionJob
+      steps:
+      - checkout: none
+      - script: echo 'Create release version!'
