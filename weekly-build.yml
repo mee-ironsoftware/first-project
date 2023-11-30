@@ -32,6 +32,16 @@ variables:
     value: $[format('{0:dd}/{0:MM}/{0:yyyy} {0:HH}:{0:mm}:{0:ss}', pipeline.startTime)]
   - name: NuGetVersion
     value: '$(Year).$(Month).0-preview.$(Rev:r)'
+  - name: AssemblyVersion
+    value: '$(Year).$(Month).0.0'
+  - name: ChromeConfiguration
+    value: 'Release'
+  - name: CommonPdfiumConfiguration
+    value: 'Release'
+  - name: PdfConfiguration
+    value: 'Release-Remote'
+  - name: PdfSelfContainedConfiguration
+    value: 'Release-SelfContained' # Will need to append `-platform` on IronPdf pipeline. -Win, -Linux, -MacOs
 
 pool: 
   vmImage: 'ubuntu-latest'
@@ -156,4 +166,32 @@ stages:
     - job: CreateReleaseVersionJob
       steps:
       - checkout: none
-      - script: echo 'Create release version!'
+      - task: file-creator@6
+        displayName: 'STORE VERSION INFORMATION'
+        inputs:
+          filepath: 'VersionInformation/versions.xml'
+          filecontent: |
+            <?xml version="1.0" encoding="utf-8"?>
+            <Versions>
+              <ChromeConfiguration>$(ChromeConfiguration)</ChromeConfiguration>
+              <ChromeVersion>$(NuGetVersion)</ChromeVersion>
+              <ChromeNextVersion>$(NextNuGetVersion)</ChromeNextVersion>
+              <ChromeAssemblyVersion>$(AssemblyVersion)</ChromeAssemblyVersion>
+              <CommonPdfiumConfiguration>$(CommonPdfiumConfiguration)</CommonPdfiumConfiguration>
+              <CommonPdfiumNuGetVersion>$(NuGetVersion)</CommonPdfiumNuGetVersion>
+              <CommonPdfiumAssemblyVersion>$(AssemblyVersion)</CommonPdfiumAssemblyVersion>
+              <IronPdfConfiguration>$(PdfConfiguration)</IronPdfConfiguration>
+              <IronPdfSelfContainedConfiguration>$(PdfSelfContainedConfiguration)</IronPdfSelfContainedConfiguration>
+              <IronPdfNuGetVersion>$(NuGetVersion)</IronPdfNuGetVersion>
+              <IronPdfAssemblyVersion>$(AssemblyVersion)</IronPdfAssemblyVersion>
+              <GitCommitHash>$(Build.SourceVersion)</GitCommitHash>
+            </Versions>
+          fileoverwrite: true
+          verbose: true
+      # publish artifacts
+      - task: PublishPipelineArtifact@1
+        displayName: 'PUBLISH VERSION INFORMATION'
+        inputs:
+          targetPath: 'VersionInformation'
+          artifact: 'Versions'
+          publishLocation: 'pipeline'
